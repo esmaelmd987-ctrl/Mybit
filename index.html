@@ -2,109 +2,470 @@
 <html lang="bn" class="h-full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chat & Image Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Universal AI Hub</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gemini: {
+                            bgLight: '#f8f9fa',
+                            bgDark: '#131314',
+                            sidebarLight: '#f0f4f9',
+                            sidebarDark: '#1e1f20',
+                            cardLight: '#ffffff',
+                            cardDark: '#282a2c'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        html, body { height: 100%; margin: 0; }
-        .generated-image { max-width: 100%; border-radius: 12px; margin: 10px 0; }
+        html, body { height: 100%; margin: 0; overflow-x: hidden; }
+        #app-loader {
+            position: fixed; inset: 0; background: #ffffff;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; transition: opacity 0.3s ease;
+        }
+        .dark #app-loader { background: #131314; color: #fff; }
+        .generated-img { max-width: 100%; border-radius: 12px; margin-top: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     </style>
 </head>
-<body class="bg-gray-50 dark:bg-[#131314] text-gray-800 dark:text-gray-100 flex flex-col h-full font-sans">
+<body class="bg-gemini-bgLight dark:bg-gemini-bgDark text-gray-800 dark:text-gray-100 flex flex-col h-full font-sans antialiased">
 
-    <!-- Sidebar & Main Content -->
-    <div class="flex flex-1 h-full overflow-hidden">
-        <main class="flex-1 flex flex-col h-full">
-            <header class="p-4 border-b dark:border-gray-800 flex justify-between items-center">
-                <h1 class="font-bold text-lg">AI Assistant</h1>
-                <button onclick="openSettings()" class="bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded text-sm">⚙️ সেটিংস</button>
+    <!-- Fallback Loader -->
+    <div id="app-loader">
+        <div class="text-center">
+            <div class="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-2 text-sm font-medium">লোড হচ্ছে...</p>
+        </div>
+    </div>
+
+    <!-- Main App Layout -->
+    <div class="flex flex-1 h-full relative overflow-hidden">
+        
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-black/50 z-20 hidden md:hidden"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-30 w-64 bg-gemini-sidebarLight dark:bg-gemini-sidebarDark transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex flex-col h-full border-r border-gray-200 dark:border-gray-800">
+            <div class="p-4 flex items-center justify-between">
+                <button onclick="createNewChat()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-full font-medium transition-colors">
+                    + নতুন চ্যাট
+                </button>
+                <button onclick="toggleSidebar()" class="md:hidden p-2 text-gray-500">✕</button>
+            </div>
+
+            <div id="chat-list" class="flex-1 overflow-y-auto px-3 space-y-1"></div>
+
+            <div class="p-3 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-1">
+                <button onclick="toggleDarkMode()" class="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-2 text-sm">
+                    <span id="theme-icon">🌙</span> <span id="theme-text">ডার্ক মোড</span>
+                </button>
+                <button onclick="openSettings()" class="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-2 text-sm">
+                    ⚙️ সেটিংস (API & Models)
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col h-full min-w-0 relative">
+            <header class="h-14 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="md:hidden text-gray-600 dark:text-gray-300">☰</button>
+                    <h1 id="chat-title" class="font-semibold text-lg truncate">Universal AI Hub</h1>
+                </div>
             </header>
 
-            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full"></div>
+            <!-- Messages Box -->
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-6 max-w-4xl w-full mx-auto"></div>
 
-            <div class="p-4 border-t dark:border-gray-800">
-                <form id="chat-form" onsubmit="handleSend(event)" class="max-w-3xl mx-auto flex gap-2">
-                    <select id="chat-mode" class="bg-gray-200 dark:bg-gray-800 p-2 rounded-lg text-sm">
-                        <option value="chat">💬 চ্যাট</option>
-                        <option value="image">🎨 ইমেজ</option>
+            <!-- Floating Input Area -->
+            <div class="p-3 bg-gemini-bgLight dark:bg-gemini-bgDark shrink-0 border-t md:border-t-0 border-gray-200 dark:border-gray-800">
+                <form id="chat-form" onsubmit="handleSend(event)" class="max-w-4xl mx-auto flex items-center gap-2 bg-gemini-cardLight dark:bg-gemini-cardDark border border-gray-300 dark:border-gray-700 rounded-full px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500">
+                    
+                    <!-- LEFT SIDE: Mode Selector Options -->
+                    <select id="mode-selector" class="bg-gray-100 dark:bg-gray-800 text-xs sm:text-sm font-medium p-2 rounded-full outline-none border-0 cursor-pointer text-gray-700 dark:text-gray-200">
+                        <option value="chat">💬 AI Chat</option>
+                        <option value="image">🎨 Image Gen</option>
+                        <option value="voice">🔊 Voice Mode</option>
                     </select>
-                    <input type="text" id="user-input" placeholder="এখানে লিখুন..." class="flex-1 bg-white dark:bg-[#282a2c] border dark:border-gray-700 p-2 rounded-lg outline-none">
-                    <button type="submit" class="bg-blue-600 text-white px-4 rounded-lg">পাঠান</button>
+
+                    <input type="text" id="user-input" placeholder="এখানে প্রম্পট লিখুন..." autocomplete="off" class="flex-1 bg-transparent outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400 text-sm sm:text-base px-2">
+                    
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 w-9 h-9 flex items-center justify-center shrink-0 transition-colors">
+                        ➔
+                    </button>
                 </form>
             </div>
         </main>
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white dark:bg-[#282a2c] rounded-2xl max-w-sm w-full p-6 space-y-4">
-            <h2 class="font-bold text-lg">সেটিংস</h2>
+    <div id="settings-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gemini-cardDark rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
+            <h2 class="text-xl font-bold">সেটিংস</h2>
             
             <div>
-                <label class="text-xs text-gray-500">OpenRouter API Key</label>
-                <input type="password" id="api-key-input" class="w-full p-2 border rounded bg-transparent">
+                <label class="block text-xs font-semibold mb-1 text-gray-500">OpenRouter API Key</label>
+                <input type="password" id="api-key-input" placeholder="sk-or-v1-..." class="w-full p-2 rounded-lg border dark:border-gray-600 bg-transparent text-sm">
             </div>
 
             <div>
-                <label class="text-xs text-gray-500">Chat Model (যেমন: deepseek/deepseek-r1:free)</label>
-                <input type="text" id="chat-model-input" class="w-full p-2 border rounded bg-transparent">
+                <label class="block text-xs font-semibold mb-1 text-gray-500">AI Chat Model</label>
+                <input type="text" id="chat-model-input" placeholder="deepseek/deepseek-r1:free" class="w-full p-2 rounded-lg border dark:border-gray-600 bg-transparent text-sm">
             </div>
 
             <div>
-                <label class="text-xs text-gray-500">Text-to-Image Model (যেমন: black-forest-labs/flux-schnell)</label>
-                <input type="text" id="image-model-input" class="w-full p-2 border rounded bg-transparent">
+                <label class="block text-xs font-semibold mb-1 text-gray-500">Text-to-Image Model</label>
+                <input type="text" id="image-model-input" placeholder="black-forest-labs/flux-schnell" class="w-full p-2 rounded-lg border dark:border-gray-600 bg-transparent text-sm">
             </div>
 
-            <button onclick="saveSettings()" class="w-full bg-blue-600 text-white py-2 rounded-lg mt-4">সংরক্ষণ করুন</button>
+            <hr class="border-gray-200 dark:border-gray-700">
+
+            <div class="space-y-3">
+                <h3 class="font-semibold text-sm">Text-to-Speech (ভয়েস) সেটিংস</h3>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-gray-500">ভয়েস নির্বাচন করুন</label>
+                    <select id="tts-voice-select" class="w-full p-2 rounded-lg border dark:border-gray-600 bg-white dark:bg-gemini-sidebarDark text-sm"></select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="tts-auto-play" class="rounded">
+                    <label for="tts-auto-play" class="text-sm">স্বয়ংক্রিয়ভাবে ভয়েস প্লে হবে</label>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeSettings()" class="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">বাতিল</button>
+                <button onclick="saveSettings()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">সংরক্ষণ করুন</button>
+            </div>
         </div>
     </div>
 
+    <!-- Application Script -->
     <script>
         let state = {
-            apiKey: localStorage.getItem('op_api_key') || '',
-            chatModel: localStorage.getItem('op_chat_model') || 'deepseek/deepseek-r1:free',
-            imageModel: localStorage.getItem('op_image_model') || 'black-forest-labs/flux-schnell',
-            messages: []
+            apiKey: localStorage.getItem('hub_api_key') || '',
+            chatModel: localStorage.getItem('hub_chat_model') || 'deepseek/deepseek-r1:free',
+            imageModel: localStorage.getItem('hub_image_model') || 'black-forest-labs/flux-schnell',
+            autoTTS: localStorage.getItem('hub_auto_tts') === 'true',
+            selectedVoiceUri: localStorage.getItem('hub_tts_voice') || '',
+            darkMode: localStorage.getItem('hub_dark') === 'true',
+            chats: JSON.parse(localStorage.getItem('hub_chats')) || [],
+            currentChatId: localStorage.getItem('hub_current_chat') || null
         };
 
-        // UI Open Settings
-        function openSettings() {
-            document.getElementById('api-key-input').value = state.apiKey;
-            document.getElementById('chat-model-input').value = state.chatModel;
-            document.getElementById('image-model-input').value = state.imageModel;
-            document.getElementById('settings-modal').classList.remove('hidden');
+        let synth = window.speechSynthesis;
+        let voices = [];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initVoices();
+            if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
+            
+            applyTheme();
+            if (state.chats.length === 0) {
+                createNewChat();
+            } else if (!state.currentChatId || !state.chats.find(c => c.id === state.currentChatId)) {
+                state.currentChatId = state.chats[0].id;
+            }
+            renderSidebar();
+            renderMessages();
+
+            const loader = document.getElementById('app-loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.remove(), 300);
+            }
+        });
+
+        function initVoices() {
+            voices = synth.getVoices();
+            const select = document.getElementById('tts-voice-select');
+            if (!select) return;
+            select.innerHTML = '';
+            voices.forEach(voice => {
+                const opt = document.createElement('option');
+                opt.textContent = `${voice.name} (${voice.lang})`;
+                opt.setAttribute('data-value', voice.voiceURI);
+                if (voice.voiceURI === state.selectedVoiceUri) opt.selected = true;
+                select.appendChild(opt);
+            });
         }
 
-        function saveSettings() {
-            state.apiKey = document.getElementById('api-key-input').value;
-            state.chatModel = document.getElementById('chat-model-input').value;
-            state.imageModel = document.getElementById('image-model-input').value;
-            localStorage.setItem('op_api_key', state.apiKey);
-            localStorage.setItem('op_chat_model', state.chatModel);
-            localStorage.setItem('op_image_model', state.imageModel);
-            document.getElementById('settings-modal').classList.add('hidden');
-            alert('সেটিংস সংরক্ষিত হয়েছে!');
+        function speakText(text) {
+            if (synth.speaking) synth.cancel();
+            if (!text) return;
+            const clean = text.replace(/```[\s\S]*?```/g, '').replace(/[*#_`]/g, '');
+            const utter = new SpeechSynthesisUtterance(clean);
+            if (state.selectedVoiceUri) {
+                const voice = voices.find(v => v.voiceURI === state.selectedVoiceUri);
+                if (voice) utter.voice = voice;
+            }
+            synth.speak(utter);
+        }
+
+        function stopSpeech() { if (synth.speaking) synth.cancel(); }
+
+        function applyTheme() {
+            if (state.darkMode) {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-icon').textContent = '☀️';
+                document.getElementById('theme-text').textContent = 'লাইট মোড';
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').textContent = '🌙';
+                document.getElementById('theme-text').textContent = 'ডার্ক মোড';
+            }
+        }
+
+        function toggleDarkMode() {
+            state.darkMode = !state.darkMode;
+            localStorage.setItem('hub_dark', state.darkMode);
+            applyTheme();
+        }
+
+        function createNewChat() {
+            const newChat = { id: Date.now().toString(), title: 'নতুন চ্যাট', messages: [] };
+            state.chats.unshift(newChat);
+            state.currentChatId = newChat.id;
+            saveState();
+            renderSidebar();
+            renderMessages();
+        }
+
+        function selectChat(id) {
+            state.currentChatId = id;
+            saveState();
+            renderSidebar();
+            renderMessages();
+            if (window.innerWidth < 768) toggleSidebar();
+        }
+
+        function deleteChat(id, e) {
+            e.stopPropagation();
+            state.chats = state.chats.filter(c => c.id !== id);
+            if (state.chats.length === 0) createNewChat();
+            else if (state.currentChatId === id) state.currentChatId = state.chats[0].id;
+            saveState(); renderSidebar(); renderMessages();
+        }
+
+        function saveState() {
+            localStorage.setItem('hub_chats', JSON.stringify(state.chats));
+            localStorage.setItem('hub_current_chat', state.currentChatId);
+        }
+
+        function renderSidebar() {
+            const container = document.getElementById('chat-list');
+            container.innerHTML = '';
+            state.chats.forEach(chat => {
+                const active = chat.id === state.currentChatId;
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-2.5 rounded-lg cursor-pointer text-sm transition-colors ${active ? 'bg-gray-200 dark:bg-gray-700 font-medium' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`;
+                div.onclick = () => selectChat(chat.id);
+                div.innerHTML = `<span class="truncate pr-2">💬 ${chat.title}</span><button onclick="deleteChat('${chat.id}', event)" class="text-gray-400 hover:text-red-500 p-1">🗑️</button>`;
+                container.appendChild(div);
+            });
+        }
+
+        function getCurrentChat() { return state.chats.find(c => c.id === state.currentChatId); }
+
+        function renderMessages() {
+            const chat = getCurrentChat();
+            const container = document.getElementById('messages-container');
+            container.innerHTML = '';
+            document.getElementById('chat-title').textContent = chat ? chat.title : 'AI Assistant';
+
+            if (!chat || chat.messages.length === 0) {
+                container.innerHTML = `<div class="text-center text-gray-400 py-10">কীভাবে সাহায্য করতে পারি? চ্যাট মোড সিলেক্ট করে বার্তা লিখুন...</div>`;
+                return;
+            }
+
+            chat.messages.forEach(msg => {
+                const isUser = msg.role === 'user';
+                const wrapper = document.createElement('div');
+                wrapper.className = `flex flex-col ${isUser ? 'items-end' : 'items-start'}`;
+
+                const contentDiv = document.createElement('div');
+                contentDiv.className = `max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 ${isUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gemini-cardLight dark:bg-gemini-cardDark border border-gray-200 dark:border-gray-700 rounded-bl-none'}`;
+
+                if (isUser) {
+                    contentDiv.textContent = msg.content;
+                } else {
+                    if (msg.type === 'image') {
+                        contentDiv.innerHTML = `<p class="text-xs text-gray-400 mb-1">Generated Image:</p><img src="${msg.content}" class="generated-img" alt="AI Image"><a href="${msg.content}" target="_blank" class="inline-block mt-2 text-xs text-blue-500 underline">ডাউনলোড / ফুল ভিউ</a>`;
+                    } else {
+                        contentDiv.innerHTML = marked.parse(msg.content);
+                        const audioBar = document.createElement('div');
+                        audioBar.className = 'flex items-center gap-3 mt-3 pt-2 border-t border-gray-100 dark:border-gray-700/50 text-xs';
+                        audioBar.innerHTML = `<button onclick="speakText(this.getAttribute('data-text'))" data-text="${encodeURIComponent(msg.content)}" class="text-blue-500 hover:underline">🔊 প্লে ভয়েস</button><button onclick="stopSpeech()" class="text-gray-400 hover:underline">⏹ থামান</button>`;
+                        audioBar.querySelector('[data-text]').setAttribute('data-text', msg.content);
+                        contentDiv.appendChild(audioBar);
+                    }
+                }
+                wrapper.appendChild(contentDiv);
+                container.appendChild(wrapper);
+            });
+            container.scrollTop = container.scrollHeight;
         }
 
         async function handleSend(e) {
             e.preventDefault();
             const input = document.getElementById('user-input');
-            const mode = document.getElementById('chat-mode').value;
-            const prompt = input.value.trim();
-            if (!prompt) return;
+            const mode = document.getElementById('mode-selector').value;
+            const text = input.value.trim();
+            if (!text) return;
 
-            state.messages.push({ role: 'user', content: prompt });
+            if (!state.apiKey) {
+                alert('দয়া করে সেটিংস থেকে API Key প্রদান করুন!');
+                openSettings();
+                return;
+            }
+
+            const chat = getCurrentChat();
+            if (chat.messages.length === 0) {
+                chat.title = text.substring(0, 20) + '...';
+                renderSidebar();
+            }
+
+            chat.messages.push({ role: 'user', content: text });
             input.value = '';
             renderMessages();
 
-            if (mode === 'chat') {
-                await fetchChat(prompt);
-            } else {
-                await fetchImage(prompt);
+            if (mode === 'chat' || mode === 'voice') {
+                await handleChatResponse(chat, mode === 'voice');
+            } else if (mode === 'image') {
+                await handleImageResponse(chat, text);
             }
         }
 
+        async function handleChatResponse(chat, forceVoice) {
+            chat.messages.push({ role: 'assistant', content: '', type: 'text' });
+            const aiIdx = chat.messages.length - 1;
+            renderMessages();
+
+            const container = document.getElementById('messages-container');
+            const aiDiv = container.lastElementChild.querySelector('div');
+
+            try {
+                const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${state.apiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: state.chatModel,
+                        messages: chat.messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
+                        stream: true
+                    })
+                });
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let full = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.replace('data: ', '').trim();
+                            if (dataStr === '[DONE]') break;
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                full += parsed.choices[0]?.delta?.content || '';
+                                chat.messages[aiIdx].content = full;
+                                aiDiv.innerHTML = marked.parse(full);
+                                container.scrollTop = container.scrollHeight;
+                            } catch (e) {}
+                        }
+                    }
+                }
+                saveState();
+                renderMessages();
+                if (state.autoTTS || forceVoice) speakText(full);
+            } catch (err) {
+                chat.messages[aiIdx].content = 'ত্রুটি: ' + err.message;
+                saveState(); renderMessages();
+            }
+        }
+
+        async function handleImageResponse(chat, prompt) {
+            chat.messages.push({ role: 'assistant', content: 'ছবি তৈরি হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...', type: 'text' });
+            renderMessages();
+            const aiIdx = chat.messages.length - 1;
+
+            try {
+                const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${state.apiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: state.imageModel,
+                        messages: [{ role: 'user', content: prompt }]
+                    })
+                });
+
+                const data = await res.json();
+                const content = data.choices[0]?.message?.content || '';
+                const match = content.match(/https?:\/\/[^\s"']+/);
+
+                if (match) {
+                    chat.messages[aiIdx] = { role: 'assistant', content: match[0], type: 'image' };
+                } else {
+                    chat.messages[aiIdx] = { role: 'assistant', content: 'ছবি তৈরি করা সম্ভব হয়নি: ' + content, type: 'text' };
+                }
+            } catch (err) {
+                chat.messages[aiIdx] = { role: 'assistant', content: 'ত্রুটি: ' + err.message, type: 'text' };
+            }
+            saveState();
+            renderMessages();
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+            document.getElementById('sidebar-backdrop').classList.toggle('hidden');
+        }
+
+        function openSettings() {
+            document.getElementById('api-key-input').value = state.apiKey;
+            document.getElementById('chat-model-input').value = state.chatModel;
+            document.getElementById('image-model-input').value = state.imageModel;
+            document.getElementById('tts-auto-play').checked = state.autoTTS;
+            initVoices();
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+
+        function saveSettings() {
+            state.apiKey = document.getElementById('api-key-input').value.trim();
+            state.chatModel = document.getElementById('chat-model-input').value.trim() || 'deepseek/deepseek-r1:free';
+            state.imageModel = document.getElementById('image-model-input').value.trim() || 'black-forest-labs/flux-schnell';
+            state.autoTTS = document.getElementById('tts-auto-play').checked;
+
+            const voiceSelect = document.getElementById('tts-voice-select');
+            const selectedOpt = voiceSelect.options[voiceSelect.selectedIndex];
+            if (selectedOpt) state.selectedVoiceUri = selectedOpt.getAttribute('data-value') || '';
+
+            localStorage.setItem('hub_api_key', state.apiKey);
+            localStorage.setItem('hub_chat_model', state.chatModel);
+            localStorage.setItem('hub_image_model', state.imageModel);
+            localStorage.setItem('hub_auto_tts', state.autoTTS);
+            localStorage.setItem('hub_tts_voice', state.selectedVoiceUri);
+
+            closeSettings();
+            alert('সেটিংস সংরক্ষিত হয়েছে!');
+        }
+    </script>
+</body>
+</html>
         async function fetchChat(prompt) {
             state.messages.push({ role: 'assistant', content: '...' });
             renderMessages();
